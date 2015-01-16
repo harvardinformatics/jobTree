@@ -44,6 +44,15 @@ def parasolIsInstalled():
     except RuntimeError:
         return False
     
+def slurmIsInstalled():
+    """Returns True if Slurm is installed, else False.
+    """
+    try:
+        return system("sbatch --version") == 0
+    except RuntimeError:
+        return False
+
+    
 def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
     command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
     system(command)

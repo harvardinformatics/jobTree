@@ -7,20 +7,19 @@ Created on Mon Jan  5 14:47:51 2015
 
 import os
 import re
+import time
 
 from Queue import Queue,Empty
 from threading import Thread
 
+from sonLib.bioio import logger
+
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.src.master import getParasolResultsFileName
-from jobTree.batchSystems.slurm.sbatch import SbatchCommand,Command
+from jobTree.batchSystems.slurm import SbatchCommand,Command,Slurm
 
 import json
 
-
-sbatch  = Command.fetch("slurm/default/sbatch.json")
-sacct   = Command.fetch("slurm/default/sacct.json")
-scancel = Command.fetch("slurm/default/scancel.json")
 
 class Worker(Thread):
     def __init__(self, newJobsQueue, updatedJobsQueue, boss):
@@ -39,30 +38,53 @@ class Worker(Thread):
 
             # Launch jobs as necessary:
             while len(self.currentjobs) > 0:
-                jobID, cmdstr = self.currentjobs.pop()
-                slurmJobID = slurm(cmdstr)
+                jobID, cmdstr, mem, cpu = self.currentjobs.pop()
+                
+                slurmJobID = Slurm.submitJob(cmdstr,mem=str(int(mem/ 1000000)),ntasks=str(int(cpu)))
+                
                 self.boss.jobIDs[(slurmJobID, None)] = jobID
-                self.boss.slurmJobIDs[jobID] = (slurmJobID, None)
+                self.boss.slurmJobTasks[jobID] = (slurmJobID, None)
                 self.runningjobs.add((slurmJobID, None))
 
             # Test known job list
             for slurmJobID in list(self.runningjobs):
-                exit = getjobexitcode(slurmJobID)
-                if exit is not None:
-                    self.updatedJobsQueue.put((slurmJobID, exit))
+                exitcode = SlurmBatchSystem.getJobExitCode(slurmJobID)
+                if exitcode is not None:
+                    self.updatedJobsQueue.put((slurmJobID, exitcode))
                     self.runningjobs.remove(slurmJobID)
 
             time.sleep(10)
 
 
-
-
 class SlurmBatchSystem(AbstractBatchSystem):
-    """
-    BatchSystem adaptation for Slurm
-    """
+    
+    @classmethod
+    def getJobExitCode(cls,slurmJobTask):
+        """
+        Returns the exit code for a job.  
+        Returns None if the job is pending or if the job cannot be found
+        Returns 1 if the job completed but failed
+        Returns 0 if the job completed successfully
+        """
+        
+        jobid,task = slurmJobTask
+        
+        status = Slurm.getJobStatus(jobid)
+        if status is not None and status.strip() != "":
+            if "COMPLETED" in status:
+                return 0
+            for code in ["PENDING","RUNNING","SUSPENDED","CONFIGURING","COMPLETING","RESIZING"]:
+                if code in status:
+                    return None
+            for code in ["CANCELLED","FAILED","TIMEOUT","PREEMPTED","NODE_FAIL"]:
+                if code in status:
+                    return 1
+                
+        return None
+
     def __init__(self, config, maxCpus, maxMemory): 
         """
+        Stuff
         """
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         
@@ -75,7 +97,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
         self.currentjobs = set()
         self.obtainSystemConstants()
         self.jobIDs = dict()
-        self.slurmJobIDs = dict()
+        self.slurmJobTasks = dict()
         self.nextJobID = 0
 
         self.newJobsQueue = Queue()
@@ -99,52 +121,65 @@ class SlurmBatchSystem(AbstractBatchSystem):
             raise RuntimeError("Requesting more memory than available. Requested: %s, Available: %s" % (memory, self.maxMemory))
     
     def issueJob(self, command, memory, cpu):
-        """Issues the following command returning a unique jobID. Command
-        is the string to run, memory is an int giving
+        """
+        Issues the following command returning a unique jobID by pushing it
+        onto the queue used by Worker threads
+        Command is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for
-        the job and error-file is the path of the file to place any std-err/std-out in.
+        the job.
         """
         jobID = self.nextJobID
         self.nextJobID += 1
         self.currentjobs.add(jobID)
-        sbatch.mem = memory
-        sbatch.ntasks = cpu
-        sbatch.command = command
-        sbatch.scriptname = "some script name needs to be set"
-        slurmcmd = sbatch.composeCmdString()
-        self.newJobsQueue.put((jobID, slurmcmd))
+        self.newJobsQueue.put((jobID, command, memory, cpu))
         logger.info("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
+    
+
+    def getSlurmJobID(self, jobID):
+        if not jobID in self.slurmJobTasks:
+            RuntimeError("Unknown jobID, could not be converted")
+
+        (jobid,task) = self.slurmJobTasks[jobID]
+        if task is None:
+            return str(jobid) 
+        else:
+            return str(jobid) + "." + str(task)   
  
     
     def killJobs(self, jobIDs):
         """
-        Kills the given job IDs and makes sure they're dead.
+        Kills the given job indexes and makes sure they're dead.
         """
         for jobID in jobIDs:
             slurmJobID = self.getSlurmJobID(jobID)
-            logger.info("DEL: " + str(slurmJobID)))
+            logger.info("DEL: " + str(slurmJobID))
             self.currentjobs.remove(jobID)
-            scancel.jobid = slurmJobID
-            cmdstr = scancel.composeCmdString()
-            process = subprocess.Popen(cmdstr)
+            try:
+                Slurm.killJob(slurmJobID)
+            except Exception:
+                pass
 
             #What is this????
-            del self.jobIDs[self.slurmJobIDs[jobID]]
-            del self.slurmJobIDs[jobID]
+            del self.jobIDs[self.slurmJobTasks[jobID]]
+            del self.slurmJobTasks[jobID]
 
         toKill = set(jobIDs)
         maxattempts = 5
-        while len(toKill) > 0:
+        attempts = 0
+        while len(toKill) > 0 and attempts < maxattempts:
             for jobID in list(toKill):
-                if getjobexitcode(self.lsfJobIDs[jobID]) is not None:
+                if SlurmBatchSystem.getJobExitCode(self.slurmJobIDs[jobID]) is not None:
                     toKill.remove(jobID)
 
             if len(toKill) > 0:
                 logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
                 time.sleep(5)
+                attempts += 1
  
-    
+            
+        
+        
     def getIssuedJobIDs(self):
         """
         A list of jobs (as jobIDs) currently issued (may be running, or maybe 
@@ -157,7 +192,22 @@ class SlurmBatchSystem(AbstractBatchSystem):
         Gets a map of jobs (as jobIDs) currently running (not just waiting) 
         and a how long they have been running for (in seconds).
         """
-        raise RuntimeError("Abstract method")
+        times = {}
+        currentjobs = set(self.slurmJobTasks[x][0] for x in self.getIssuedJobIDs())
+        squeue = Command.fetch("squeue",jsonstr=Slurm.squeuecmdstr)
+        squeue.reset()
+        squeue.jobs = ",".join(currentjobs)
+        squeue.format = "'%%i %%T %%S'"
+        squeue.noheader = True
+        
+        [returncode,stdout,stderr] = squeue.run()
+        lines = stdout.split("\n")
+        for line in lines:
+            items = line.strip().split()
+            if items[1] == "RUNNING":
+                jobstart = time.mktime(time.strptime(items[2],"%Y-%m-%dT%H:%M:%S"))
+                times[self.jobIDs[(items[0])]] = time.time() - jobstart
+        return times
     
     def getUpdatedJob(self, maxWait):
         """
@@ -177,7 +227,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
 
         return i
  
-     def getWaitDuration(self):
+    def getWaitDuration(self):
         """
         We give parasol a second to catch its breath (in seconds)
         """
@@ -201,6 +251,9 @@ class SlurmBatchSystem(AbstractBatchSystem):
         if self.maxCPU is 0 or self.maxMEM is 0:
                 RuntimeError("Can't read ncpus or maxmem info")
         logger.info("Got the maxCPU: %s" % (self.maxMEM))
+        
+    
+
 
 
 def main():

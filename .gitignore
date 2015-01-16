@@ -4,3 +4,7 @@
 bin/
 tmp_*
 .spyderproject
+.project
+.pydevproject
+.settings*
+

@@ -13,7 +13,7 @@ from sonLib.bioio import system
 from sonLib.bioio import getTempDirectory
 from sonLib.bioio import getTempFile
 
-from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled
+from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, slurmIsInstalled
 
 
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
@@ -31,8 +31,8 @@ class TestCase(unittest.TestCase):
     def testScriptTree_SortGridEngine(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        if gridEngineIsInstalled():
-            scriptTree_SortTest(self.testNo, "gridengine")
+        #if gridEngineIsInstalled():
+        #    scriptTree_SortTest(self.testNo, "gridengine")
             
     def testScriptTree_Parasol(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
@@ -43,7 +43,13 @@ class TestCase(unittest.TestCase):
     def testScriptTree_SortAcid(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        scriptTree_SortTest(self.testNo, "acid_test")
+        #scriptTree_SortTest(self.testNo, "acid_test")
+        
+    def testScriptTree_SortSlurm(self):
+        """Tests scriptTree/jobTree by sorting a file in parallel
+        """
+        if slurmIsInstalled():
+            scriptTree_SortTest(self.testNo, "slurm")
 
 #The following functions test the functions in the test!
     

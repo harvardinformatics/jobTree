@@ -8,11 +8,14 @@ All rights reserved.
 """
 import re, os
 import tempfile
-import logging
+import json
+import subprocess
+
+from sonLib.bioio import logger
 
 SBATCH_NOSUBMIT_OPTIONS =  ['usage','help']
 
-DEFAULT_PDEF_PATH=os.path.join(os.path.dir(__file__),'slurm')
+DEFAULT_PDEF_PATH=os.path.join(os.path.dirname(__file__),'slurm')
 
 def getClassFromName(classname):
     """
@@ -67,7 +70,7 @@ class Command(object):
     command or an array of command elements.
     """
     @classmethod
-    def fetch(cls,name,path=DEFAULT_PDEF_PATH,defaults=None):
+    def fetch(cls,name,path=DEFAULT_PDEF_PATH,defaults=None,jsonstr=None):
         """
         Create a Command object using a JSON definition file.
         defaults is a dict of default values keyed by parameter name.  This can be used to override
@@ -76,8 +79,11 @@ class Command(object):
         if not name.endswith('.json'):
             name = name + '.json'
         pardata = {}
-        with open(os.path.join(path,name),'r') as pdeffile:
-            pardata = json.load(pdeffile)
+        if jsonstr is not None:
+            pardata = json.loads(jsonstr)
+        else:
+            with open(os.path.join(path,name),'r') as pdeffile:
+                pardata = json.load(pdeffile)        
         if pardata is None:
             raise Exception("No command defined in %s" % path)
         if "cmdclass" not in pardata:
@@ -162,8 +168,8 @@ class Command(object):
         """
         Resets parameter defs to their defaults.
         """
-        for key,pdef in self.parameterdefs:
-            self.cmdparametervalues[key] = pdef.default
+        for key,pdef in self.parameterdefs.iteritems():
+            self.setArgValue(key, pdef.default)
 
          
     def composeCmdString(self):
@@ -215,8 +221,16 @@ class Command(object):
                 
                 for pname in sortednames:
                     pdef = self.parameterdefs[pname]
-                    if pname in self.cmdparametervalues:
-                        value = self.cmdparametervalues[pname]
+                    if pname in self.cmdparametervalues or (hasattr(pdef,'default') and pdef.default is not None):
+                
+                        value = None
+                        if pname in self.cmdparametervalues:
+                            value = self.cmdparametervalues[pname]
+                        elif hasattr(pdef,'default') and pdef.default is not None and pdef.default != "":
+                            value = pdef.default
+                        else:
+                            continue
+                        
                         
                         if value == False:
                             continue
@@ -250,6 +264,7 @@ class Command(object):
                                 cmdstring += " %s" % pdef.pattern.replace("?","").replace("<VALUE>",value)
                                 
                         else:
+                            logger.info("..name %s" % pname)
                             if value == True:
                                 cmdstring += " %s" % pdef.pattern
                             else:
@@ -273,14 +288,14 @@ class Command(object):
         self.cmdparametervalues[arg] = value 
 
 
-    def setParameterDefault(key,value):
+    def setParameterDefault(self,key,value):
         """
         Sets the default value for the named parameter.  Parameter defs must be set.
         """
         pdef = self.getParameterDef(key)
         if pdef is None:
             raise Exception("Unable to set default for %s; Parameter def cannot be found")
-        pdef.default = value
+        self.parameterdefs[key].default = value
 
          
     def getParameterDef(self,key):
@@ -324,6 +339,19 @@ class Command(object):
         else:
             return True
         
+    def run(self):
+        """
+        Run this command using the command string and Popen.  
+        A tuple of return code, stdout, and stderr is returned.
+        """       
+        p = subprocess.Popen(
+            self.composeCmdString(),
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = p.communicate()
+        return [p.returncode,stdout.strip(),stderr.strip()]
         
     def __dir__(self):
         keys = self.__dict__.keys()
@@ -346,6 +374,7 @@ class Command(object):
             self.setArgValue(name, value)
         else:
             self.__dict__[name] = value
+            
  
 
 
@@ -357,11 +386,17 @@ class SbatchCommand(Command):
     Modifications specific to Sbatch, including script generation
     and setting dependencies
     """
-    def __init__(self,scriptpath="./"):
+    def __init__(self,*args,**kwargs):
         """
         Set a script path, so that *.sbatch scripts can be written.  Default is cwd.
         """
-        self.scriptpath = scriptpath
+        if "scriptpath" in kwargs:
+            self.scriptpath = kwargs["scriptpath"]
+            del kwargs["scriptpath"]
+        else:
+            self.scriptpath = "./"
+            
+        super(self.__class__,self).__init__(*args,**kwargs)
         
     def composeCmdString(self):
         # If options like --help or --usage are set, use parent for command processing
@@ -389,8 +424,15 @@ class SbatchCommand(Command):
         commands = []
         for pname in sortednames:
             pdef = self.parameterdefs[pname]
-            if pname in self.cmdparametervalues:
-                value = self.cmdparametervalues[pname]
+            if pname in self.cmdparametervalues or (hasattr(pdef,'default') and pdef.default is not None):
+                
+                value = None
+                if pname in self.cmdparametervalues:
+                    value = self.cmdparametervalues[pname]
+                elif hasattr(pdef,'default'):
+                    value = pdef.default
+                else:
+                    continue
                 
                 if value == False:
                     continue
@@ -448,6 +490,7 @@ class SbatchCommand(Command):
                     if value == True:
                         cmdstring += "#SBATCH %s\n" % pdef.pattern
                     else:
+                        print pname
                         cmdstring += "#SBATCH %s\n" % pdef.pattern.replace("<VALUE>",value)
                    
         cmdstring += "\n".join(commands)
@@ -468,23 +511,255 @@ class SbatchCommand(Command):
         newcmdstring = ' '.join([self.bin,scriptname])
         return newcmdstring.encode('ascii','ignore')
 
+    def __str__(self):
+        s = "%s\n" % self.composeCmdString()
+        for k,v in self.cmdparametervalues.iteritems():
+            s += '-- %s : %s\n' % (k,v)
+            
+        return s
 
 
 DEFAULT_SLURM_CONF_FILE="/etc/slurm/slurm.conf"
 
 class Slurm(object):
     """
-    Encapsulation of Slurmy things. Uses Command objects.
+    Encapsulation of Slurmy things. Uses Command objects populated with truncated 
+    ParameterDefs.  Mostly static, stateless methods
     """
-    def __init__(self,conffile=DEFAULT_SLURM_CONF_FILE):
-        self.loadConfig(conffile)
-        self.scancel = Command.fetch("scancel.json")
-        self.sbatch  = Command.fetch("sbatch.json")
-        self.sacct   = Command.fetch("sacct.json")
+    conf = None
     
-    def loadConfig(self,conffile):
+    sbatchstr = """
+{
+        "name" : "sbatch",
+        "version" : "14.03.8",
+        "bin" : "sbatch",
+        "description" : "sbatch  submits  a  batch script to SLURM.",
+        "cmdclass" : "jobTree.batchSystems.slurm.SbatchCommand",
+        "parameterdefs" : [
+            {
+                "name" : "scriptname",
+                "description" : "Name of the script that will be submitted with sbatch",
+                "pattern" : "<VALUE>",
+                "required" : "yes",
+                "order" : "1000"
+            },
+            {
+                "name" : "error",
+                "description" : "Instruct SLURM to connect the batch script standard error directly to the file name specified",
+                "switches" : ["--error","-e"],
+                "pattern" : "--error='<VALUE>'",
+                "required" : "no"
+            },
+            {
+                "name" : "job_name",
+                "description" : "Instruct SLURM to connect the batch script standard input directly to the file name specified",
+                "switches" : ["--job-name","-J"],
+                "pattern" : "--job-name='<VALUE>'",
+                "required" : "no"
+            },
+            {
+                "name" : "mem",
+                "description" : "Specify  the  real memory required per node in MegaBytes.",
+                "switches" : ["--mem"],
+                "pattern" : "--mem=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "mem_per_cpu",
+                "description" : "Mimimum memory required per allocated CPU in MegaBytes.",
+                "switches" : ["--mem-per-cpu"],
+                "pattern" : "--mem-per-cpu=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "nodes",
+                "description" : "Request that a minimum of nodes be allocated to this job.  A maximum node count may also be specified.",
+                "switches" : ["--nodes","-N"],
+                "pattern" : "--nodes=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "ntasks",
+                "description" : "This option  advises  the  SLURM  controller that job steps run within the allocation will launch a maximum of number tasks and to provide for sufficient resources",
+                "switches" : ["--ntasks","-n"],
+                "pattern" : "--ntasks=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "output",
+                "description" : "Instruct  SLURM  to connect the batch script's standard output directly to the file name specified.",
+                "switches" : ["--output","-o"],
+                "pattern" : "--output='<VALUE>'",
+                "required" : "no"
+            },
+            {
+                "name" : "partition",
+                "description" : "Open the output and error files using append or truncate mode as specified.",
+                "switches" : ["--partition","-p"],
+                "pattern" : "--partition=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "time",
+                "description" : "Set a limit on the total run time of the job allocation.",
+                "switches" : ["--time","-t"],
+                "pattern" : "--time=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "tmp",
+                "description" : "Specify a minimum amount of temporary disk space (in MB).",
+                "switches" : ["--tmp"],
+                "pattern" : "--tmp=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "command",
+                "description" : "Command to be submitted to Slurm cluster",
+                "switches" : [""],
+                "pattern" : "<VALUE>",
+                "required" : "no",
+                "order" : "1000"
+            }
+
+         ]
+}
+    """
+    
+    scancelstr = """
+{
+        "name" : "scancel",
+        "version" : "14.03.8",
+        "bin" : "scancel",
+        "description" : "Used to signal jobs or job steps that are under the control of Slurm"       
+        "cmdclass" : "jobTree.batchSystems.slurm.Command",
+        "parameterdefs" : [
+            {
+                "name" : "jobid",
+                "description" : "The Slurm job ID to be signaled.",
+                "pattern" : "<VALUE>",
+                "required" : "yes",
+                "order" : "100"
+            }
+         ]
+}
+    """
+    
+    sacctcmdstr = """
+{
+        "name" : "sacct",
+        "version" : "14.03.8",
+        "bin" : "sacct",
+        "description" : "Displays accounting data for all jobs and job steps in the SLURM job accounting log or SLURM database.",
+        "cmdclass" : "jobTree.batchSystems.slurm.Command",
+        "parameterdefs" : [
+            {
+                "name" : "jobs",
+                "description" : "Displays information about the specified job(.step) or list of job(.step)s.",
+                "switches" : ["--jobs","-j"],
+                "pattern" : "--jobs='<VALUE>'",
+                "required" : "no"
+            },
+            {
+                "name" : "noheader",
+                "description" : "No heading will be added to the output. The default action is to display a header.",
+                "switches" : ["--noheader","-n"],
+                "pattern" : "--noheader",
+                "required" : "no"
+            },
+            {
+                "name" : "format",
+                "description" : "Comma separated list of fields.",
+                "switches" : ["--format","-o"],
+                "pattern" : "--format='<VALUE>'",
+                "required" : "no"
+            }
+         ]
+}
+    """
+    
+    squeuecmdstr = """
+{
+        "name" : "squeue",
+        "version" : "14.03.8",
+        "bin" : "squeue",
+        "description" : "squeue is used to view job and job step information for jobs managed by SLURM..",
+        "cmdclass" : "jobTree.batchSystems.slurm.Command",
+        "parameterdefs" : [
+            {
+                "name" : "noheader",
+                "description" : "Do not print a header on the output",
+                "switches" : ["--noheader","-h"],
+                "pattern" : "--noheader",
+                "required" : "no"
+            },
+            {
+                "name" : "jobs",
+                "description" : "Requests a comma separated list of job IDs to display. Defaults to all jobs.",
+                "switches" : ["--jobs","-j"],
+                "pattern" : "--jobs=<VALUE>",
+                "required" : "no"
+            },
+            {
+                "name" : "format",
+                "description" : "Specify the information to be displayed, its size and position (right or left justified). Also see the -O <output_format>, --Format=<output_format> option described below (which supports less flexibility in formatting, but supports access to all fields).",
+                "switches" : ["--format","-o"],
+                "pattern" : "--format='<VALUE>'",
+                "required" : "no"
+            }
+         ]
+}    
+    """
+        
+    @classmethod
+    def getJobStatus(cls,jobid):
+        """
+        Uses squeue, then sacct to determine job status.  Status value is 
+        returned.
+        """
+        
+        squeue = Command.fetch("squeue",jsonstr=Slurm.squeuecmdstr)
+        squeue.reset()
+        squeue.jobs = jobid
+        squeue.noheader = True
+        squeue.format = "%%T"
+        [returncode,stdout,stderr] = squeue.run()
+        if stdout is not None and stdout.strip() != "":
+            logger.info("Status of jobid %s is %s" % (str(jobid),stdout))
+            return stdout
+        else:
+            """
+            Try sacct if squeue doesn't return anything
+            """
+            sacct = Command.fetch("sacct",jsonstr=Slurm.sacctcmdstr)
+            sacct.reset()
+            sacct.jobs = "%s.batch" % jobid
+            sacct.format = "State"
+            sacct.noheader = True
+            [returncode,stdout,stderr] = sacct.run()
+            if returncode != 0:
+                raise Exception("sacct failed %s" % sacct.composeCmdString())
+            logger.info("Status of jobid %s is %s" % (str(jobid),stdout))
+            return stdout
+
+    
+    @classmethod
+    def getConfigValue(cls,key):
+        """
+        Get a slurm.conf value.  Calls loadConfig if needed.
+        """
+        if Slurm.conf is None:
+            Slurm.loadConfig()
+        if key not in Slurm.conf:
+            raise Exception("Slurm config has no key %s" % key)
+        return Slurm.conf[key]
+        
+    
+    @classmethod
+    def loadConfig(cls,conffile=DEFAULT_SLURM_CONF_FILE):
         '''
-        Constructs the object using the given slurm.conf file name
+        Constructs the object using the given slurm.conf file name.
+        If this is called more than once, the values will be reloaded.
         
         If there are backslashes at the end of the line it's concatenated
         to the next one.
@@ -492,7 +767,8 @@ class Slurm(object):
         NodeName lines are not saved because of the stupid DEFAULT stuff.  
         Maybe someday.
         '''
-        logger.debug("Initializing SlurmConfig using %s" % conffile)
+        logger.debug("Initializing Slurm config using %s" % conffile)
+        Slurm.conf = dict()
         currline = ''
         m = re.compile(r'([^=]+)\s*=\s*(.*)') #Used to extract name=value 
         n = re.compile(r'(\S+)\s+(.*)')       #Parse values on PartitionName
@@ -531,22 +807,47 @@ class Slurm(object):
                             continue
                         pname = result2.group(1)
                         pvalue = result2.group(2)
-                        if 'Partitions' not in self:
-                            self['Partitions'] = {}
-                        self['Partitions'][pname] = pvalue
+                        if 'Partitions' not in Slurm.conf:
+                            Slurm.conf['Partitions'] = dict()
+                        Slurm.conf['Partitions'][pname] = pvalue
                     else:                            
-                        self[name] = value
+                        Slurm.conf[name] = value
                 else:
                     logger.error("Slurm config file %s has strange line '%s'" % (conffile,currline))
                 
                 currline = ''
     
-    def killJob(self,jobid=None):
-        pass
+    @classmethod
+    def killJob(cls,jobid):
+        """
+        Uses scancel to kill the specified job
+        """
+        scancel = Command.fetch("scancel",jsonstr=Slurm.scancelstr)
+        scancel.jobid = jobid
+        [returncode,stdout,stderr] = scancel.run()
+        if returncode != 0:
+            raise Exception("scancel command failed %s" % stderr)
+        
     
-    def getJobStatus(self,jobid=None):
-        pass
-    
-    def submitJob(self,command,**kwargs):
-        pass
+    @classmethod
+    def submitJob(cls,command,**kwargs):
+        """
+        Uses SbatchCommand to submit a job
+        """
+        sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"10"})
+        sbatch.command = command
+        for arg,value in kwargs.iteritems():
+            if arg == "scriptpath":
+                sbatch.scriptpath = value
+            else:
+                sbatch.setArgValue(arg,value)
+        logger.info("sbatch command %s" % sbatch)
+        [returncode,stdout,stderr] = sbatch.run()
+        
+        if returncode != 0:
+            raise Exception("sbatch command failed: %s" % stderr)
+        
+        jobid = stdout.split()[-1]
+        return jobid
+        
     

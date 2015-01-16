@@ -179,7 +179,7 @@ class Stack(object):
                      childStack.getMemory(defaultMemory),
                      childStack.getCpu(defaultCpu)))
         
-         #Now build jobs for each child command
+        #Now build jobs for each child command
         for childCommand, runTime in self.target.getChildCommands():
             job.children.append((childCommand, defaultMemory, defaultCpu))
             
