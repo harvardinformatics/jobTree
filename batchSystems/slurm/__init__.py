@@ -838,7 +838,8 @@ class Slurm(object):
         """
         sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"100"})
         sbatch.command = command
-        for env,arg in {"JT_SLURM_PARTITION":"partition","JT_SLURM_TIME":"time"}:
+        envs = {"JT_SLURM_PARTITION":"partition","JT_SLURM_TIME":"time"}
+        for env,arg in envs.iteritems():
             if env in os.environ:
                 sbatch.setArgValue(arg,os.environ[env])
                 
