@@ -25,8 +25,8 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFile):
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    if random.random() > 0.5:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
+#     if random.random() > 0.5:
+#         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
     target.logToMaster("Am running a down target with length: %i from input file: %s" % (length, inputFile))
     assert length >= 0
@@ -48,16 +48,16 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFile):
 def up(target, inputFile1, inputFile2, outputFile):
     """Merges the two files and places them in the output.
     """
-    if random.random() > 0.5:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
+#     if random.random() > 0.5:
+#         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     merge(inputFile1, inputFile2, outputFile)
     target.logToMaster("Am running an up target with input files: %s and %s" % (inputFile1, inputFile2))
 
 def cleanup(tempOutputFile, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    if random.random() > 0.5:
-        raise RuntimeError() #This is a test error and not a failure of the tests
+#     if random.random() > 0.5:
+#         raise RuntimeError() #This is a test error and not a failure of the tests
     shutil.copyfile(tempOutputFile, outputFile)
 
 def main():

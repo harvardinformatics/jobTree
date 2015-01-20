@@ -264,7 +264,6 @@ class Command(object):
                                 cmdstring += " %s" % pdef.pattern.replace("?","").replace("<VALUE>",value)
                                 
                         else:
-                            logger.info("..name %s" % pname)
                             if value == True:
                                 cmdstring += " %s" % pdef.pattern
                             else:
@@ -490,7 +489,6 @@ class SbatchCommand(Command):
                     if value == True:
                         cmdstring += "#SBATCH %s\n" % pdef.pattern
                     else:
-                        print pname
                         cmdstring += "#SBATCH %s\n" % pdef.pattern.replace("<VALUE>",value)
                    
         cmdstring += "\n".join(commands)
@@ -832,16 +830,26 @@ class Slurm(object):
     @classmethod
     def submitJob(cls,command,**kwargs):
         """
-        Uses SbatchCommand to submit a job
+        Uses SbatchCommand to submit a job.  The following environment variables
+        are used to set parameters first.
+        
+        Any slurm parameters that are set as keyword args will override the 
+        environment variables.
         """
-        sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"10"})
+        sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"100"})
         sbatch.command = command
+        for env,arg in {"JT_SLURM_PARTITION":"partition","JT_SLURM_TIME":"time"}:
+            if env in os.environ:
+                sbatch.setArgValue(arg,os.environ[env])
+                
         for arg,value in kwargs.iteritems():
             if arg == "scriptpath":
                 sbatch.scriptpath = value
             else:
                 sbatch.setArgValue(arg,value)
         logger.info("sbatch command %s" % sbatch)
+        
+        
         [returncode,stdout,stderr] = sbatch.run()
         
         if returncode != 0:
