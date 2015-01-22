@@ -3,8 +3,15 @@ Created on Oct 9, 2014
 Copyright (c) 2014
 Harvard FAS Research Computing
 All rights reserved.
-
 @author: Aaron Kitzmiller
+
+This package provides pure Slurm functionality, independent of jobTree.
+
+The Slurm class is a collection of stateless class methods that perform Slurm
+tasks like submitting and killing jobs.  The remaining classes (Command, ParameterDef,
+etc.) are some command run and definition code that are used by the Slurm methods.
+They are far more involved than what is needed here, but we use them in other 
+contexts.
 """
 import re, os
 import tempfile

@@ -22,13 +22,14 @@ import json
 
 
 class Worker(Thread):
-    def __init__(self, newJobsQueue, updatedJobsQueue, boss):
+    def __init__(self, newJobsQueue, updatedJobsQueue, boss, slurmopts=dict()):
         Thread.__init__(self)
         self.newJobsQueue = newJobsQueue
         self.updatedJobsQueue = updatedJobsQueue
         self.currentjobs = list()
         self.runningjobs = set()
         self.boss = boss
+        self.slurmopts = slurmopts
         
     def run(self):
         while True:
@@ -40,7 +41,7 @@ class Worker(Thread):
             while len(self.currentjobs) > 0:
                 jobID, cmdstr, mem, cpu = self.currentjobs.pop()
                 
-                slurmJobID = Slurm.submitJob(cmdstr,mem=str(int(mem/ 1000000)),ntasks=str(int(cpu)))
+                slurmJobID = Slurm.submitJob(cmdstr,mem=str(int(mem/ 1000000)),ntasks=str(int(cpu)), **self.slurmopts)
                 
                 self.boss.jobIDs[(slurmJobID, None)] = jobID
                 self.boss.slurmJobTasks[jobID] = (slurmJobID, None)
@@ -57,6 +58,9 @@ class Worker(Thread):
 
 
 class SlurmBatchSystem(AbstractBatchSystem):
+    """
+    Batch system class that adapts jobTree for Slurm
+    """
     
     @classmethod
     def getDisplayNames(cls):
@@ -67,8 +71,24 @@ class SlurmBatchSystem(AbstractBatchSystem):
     @classmethod
     def getOptionData(cls):
         """
-        Used by the option parsing routines to construct command line options 
-        for this batch system.
+        dictionary used by the option parsing routines to construct command 
+        line options for this batch system. 
+        
+        Example:
+        
+        opts = {
+            "--slurm-partition" : {
+                "dest" : "slurm_partition",
+                "default" : "general",
+                "help" : "Set the partition to be used for normal Slurm batch operations.  Corresponds to sbatch -p/--partition.  The default is 'general'."
+            },
+            "--slurm-time" : {
+                "dest" : "slurm_time",
+                "default" : 100,
+                "help" : "Set the time limit of the Slurm job.  Corresponds to sbatch -t/--time.  Default is 100 (min)."
+            }
+        }
+                
         """
         opts = {
             "--slurm-partition" : {
@@ -80,6 +100,11 @@ class SlurmBatchSystem(AbstractBatchSystem):
                 "dest" : "slurm_time",
                 "default" : 100,
                 "help" : "Set the time limit of the Slurm job.  Corresponds to sbatch -t/--time.  Default is 100 (min)."
+            },
+            "--slurm-scriptpath" : {
+                "dest" : "scriptpath",
+                "default" : "./",
+                "help" : "Path where sbatch scripts will be stored."
             }
         }
         return opts
@@ -128,9 +153,21 @@ class SlurmBatchSystem(AbstractBatchSystem):
 
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
-        self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self)
+        
+        # store any of the slurm options
+        slurmopts = dict()
+        
+        optiondata = SlurmBatchSystem.getOptionData()
+        for switch, data in optiondata.iteritems():
+            key = data['dest']
+            if key in config.attrib:
+                sbatchopt = re.sub(r'^slurm_','',key)
+                slurmopts[sbatchopt] = config.attrib[key]
+        self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self, slurmopts)
         self.worker.setDaemon(True)
         self.worker.start()
+        
+        
 
     def __des__(self):
         #Closes the file handle associated with the results file.
@@ -216,7 +253,8 @@ class SlurmBatchSystem(AbstractBatchSystem):
     def getRunningJobIDs(self):
         """
         Gets a map of jobs (as jobIDs) currently running (not just waiting) 
-        and a how long they have been running for (in seconds).
+        and a how long they have been running for (in seconds).  Uses Slurm
+        squeue
         """
         times = {}
         currentjobs = set(self.slurmJobTasks[x][0] for x in self.getIssuedJobIDs())
