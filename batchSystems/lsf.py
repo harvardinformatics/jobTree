@@ -159,6 +159,14 @@ class LSFBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on lsf, runs all the jobs you
     give it as they come in, but in parallel.
     """
+    
+    @classmethod
+    def getDisplayNames(cls):
+        """
+        Names used to select this batch system.
+        """
+        return ["lsf","LSF"]
+    
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.lsfResultsFile = getParasolResultsFileName(config.attrib["job_tree"])

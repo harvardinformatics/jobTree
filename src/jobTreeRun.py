@@ -46,6 +46,36 @@ from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLo
 from sonLib.bioio import TempFileTree
 from sonLib.bioio import system, absSymPath
 
+def getBatchSystemClasses():
+    """
+    Returns a dictionary of batch system class objects keyed by name.  All 
+    batch systems are returned, including abstractBatchSystem
+    """
+    
+    # Add options from the batch systems
+    # First, iterate through the batchSystems path to get all of the available modules
+    # Then, for any class that has the getOptionData class method, use it to get 
+    # data to create options.
+    import pkgutil
+    import inspect
+    import jobTree.batchSystems as batchSystems
+    from  jobTree.batchSystems import abstractBatchSystem
+    
+    batchSystemClasses = {}
+    # Load the modules in the batchSystems path.  Use iter_modules to avoid 
+    # sub packages
+    for loader, name, is_pkg in pkgutil.iter_modules(batchSystems.__path__):
+        module = loader.find_module(name).load_module(name)
+    
+        for name, value in inspect.getmembers(module):
+            
+            # Look for the getOptionData method
+            for methodname, methoddata in inspect.getmembers(value, predicate=inspect.ismethod):
+                if methodname == 'getOptionData':
+                    batchSystemClasses[name] = value
+    return batchSystemClasses
+    
+
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 
                rescueJobFrequency=None):
     """A convenience function for running job tree from within a python script.
@@ -133,6 +163,22 @@ def _addOptions(addGroupFn, defaultStr):
                             "kilobytes, default=%s" % defaultStr))
     addOptionFn("--command", dest="command", default=None,
                       help="The command to run (which will generate subsequent jobs). This is deprecated")
+    
+    for name,batchclass in getBatchSystemClasses().iteritems():
+        # Get the dictionary describing the command line options.
+        # If it exists, create a new option group and add the options
+        optdata = batchclass.getOptionData()
+        if optdata:
+            
+            # Get the batch system display name
+            bsname = name
+            bsnames = batchclass.getDisplayNames()
+            if bsnames is not None:
+                bsname = bsnames[0]
+            addOptionFn = addGroupFn("jobTree options for batch system '%s'" % bsname, "Fine tune batch system parameters for this run.")
+            for optname, data in optdata.iteritems():
+                addOptionFn(optname, **data)    
+
         
 def addOptions(parser):
     # Wrapper function that allows jobTree to be used with both the optparse and 
@@ -153,33 +199,52 @@ def addOptions(parser):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
 
-def loadTheBatchSystem(config):
+def loadTheBatchSystem(config,options):
     """Load the batch system.
     """
-    def batchSystemConstructionFn(batchSystemString, maxCpus, maxMemory):
-        batchSystem = None
-        if batchSystemString == "parasol":
-            batchSystem = ParasolBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
-            logger.info("Using the parasol batch system")
-        elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
-            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
-            logger.info("Using the single machine batch system")
-        elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
-            batchSystem = GridengineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
-            logger.info("Using the grid engine machine batch system")
-        elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-            config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
-            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
-        elif batchSystemString == "lsf" or batchSystemString == "LSF":
-            batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
-            logger.info("Using the lsf batch system")
-        elif batchSystemString in ["Slurm","slurm","SLURM"]:
-            batchSystem = SlurmBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
-            logger.info("Using the Slurm batch system")
-        else:
-            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
-        return batchSystem
-    batchSystem = batchSystemConstructionFn(config.attrib["batch_system"], int(config.attrib["max_cpus"]), int(config.attrib["max_memory"]))
+#     def batchSystemConstructionFn(batchSystemString, maxCpus, maxMemory):
+#         batchSystem = None
+#         if batchSystemString == "parasol":
+#             batchSystem = ParasolBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+#             logger.info("Using the parasol batch system")
+#         elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
+#             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+#             logger.info("Using the single machine batch system")
+#         elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
+#             batchSystem = GridengineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+#             logger.info("Using the grid engine machine batch system")
+#         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
+#             config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
+#             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+#         elif batchSystemString == "lsf" or batchSystemString == "LSF":
+#             batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+#             logger.info("Using the lsf batch system")
+#         elif batchSystemString in ["Slurm","slurm","SLURM"]:
+#             batchSystem = SlurmBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+#             logger.info("Using the Slurm batch system")
+#         else:
+#             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+#         return batchSystem
+    
+    batchSystem = None
+    batchSystemClasses= getBatchSystemClasses()
+    for name,batchSystemClass in batchSystemClasses.iteritems():
+        displayNames = batchSystemClass.getDisplayNames()
+        
+        if displayNames is not None and batchSystemString in displayNames:
+            #Found the batch system class
+            # Use the getOptionData() dict to pluck the option values 
+            optiondata = batchSystemClass.getOptionData()
+            if optiondata is not None:
+                for switch, optdata in optiondata.iteritems():
+                    attr = optdata['dest']
+                    if hasattr(options,attr):
+                        config[attr] = getattr(options,attr)
+            batchSystem = batchSystemClass(config,maxCpus=int(config.attrib["max_cpus"]),maxMemory=int(config.attrib["max_memory"])) 
+            
+    if batchSystem is None:
+        raise Exception("Batch system %s is not recognized" % batchSystemString)
+#     batchSystem = batchSystemConstructionFn(config.attrib["batch_system"], int(config.attrib["max_cpus"]), int(config.attrib["max_memory"]))
     if "big_batch_system" in config.attrib:
         bigMemoryThreshold = int(config.attrib["big_memory_threshold"])
         bigCpuThreshold = int(config.attrib["big_cpu_threshold"])
@@ -251,7 +316,7 @@ def createJobTree(options):
     if options.stats:
         config.attrib["stats"] = ""
     #Load the batch system.
-    batchSystem = loadTheBatchSystem(config)
+    batchSystem = loadTheBatchSystem(config,options)
     
     #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))

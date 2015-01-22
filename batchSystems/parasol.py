@@ -92,6 +92,14 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
     """
+    
+    @classmethod
+    def getDisplayNames(cls):
+        """
+        Names used to select this batch system.
+        """
+        return ["parasol"]
+
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         if maxMemory != sys.maxint:

@@ -56,6 +56,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
     give it as they come in, but in parallel.
     """
+    @classmethod
+    def getDisplayNames(cls):
+        """
+        Names used to select this batch system.
+        """
+        return ["single_machine","singleMachine"]
+   
     def __init__(self, config, maxCpus, maxMemory, workerFn=worker):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.jobIndex = 0

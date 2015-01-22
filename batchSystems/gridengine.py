@@ -200,6 +200,12 @@ class Worker(Thread):
 class GridengineBatchSystem(AbstractBatchSystem):
     """The interface for gridengine.
     """
+    @classmethod
+    def getDisplayNames(cls):
+        """
+        Names used to select this batch system.
+        """
+        return ["gridengine","gridEngine"]
     
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor

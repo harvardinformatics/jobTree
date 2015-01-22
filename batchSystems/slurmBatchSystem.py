@@ -59,6 +59,32 @@ class Worker(Thread):
 class SlurmBatchSystem(AbstractBatchSystem):
     
     @classmethod
+    def getDisplayNames(cls):
+        """
+        Names used to select this batch system.
+        """
+        return ["slurm"]
+    @classmethod
+    def getOptionData(cls):
+        """
+        Used by the option parsing routines to construct command line options 
+        for this batch system.
+        """
+        opts = {
+            "--slurm-partition" : {
+                "dest" : "slurm_partition",
+                "default" : "general",
+                "help" : "Set the partition to be used for normal Slurm batch operations.  Corresponds to sbatch -p/--partition.  The default is 'general'."
+            },
+            "--slurm-time" : {
+                "dest" : "slurm_time",
+                "default" : 100,
+                "help" : "Set the time limit of the Slurm job.  Corresponds to sbatch -t/--time.  Default is 100 (min)."
+            }
+        }
+        return opts
+    
+    @classmethod
     def getJobExitCode(cls,slurmJobTask):
         """
         Returns the exit code for a job.  

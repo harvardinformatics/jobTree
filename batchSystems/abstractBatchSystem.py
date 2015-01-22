@@ -26,6 +26,21 @@ class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
     """
+    @classmethod
+    def getDisplayNames(cls):
+        """
+        Array of names used to select this batch system on the command line.  Returns
+        None by default.
+        """
+        return None
+        
+    @classmethod
+    def getOptionData(cls):
+        """
+        Returns dict for each option.  Can be used to add to option parser.
+        """
+        return dict()
+    
     def __init__(self, config, maxCpus, maxMemory): 
         """This method must be called.
         The config object is setup by the jobTreeSetup script and
