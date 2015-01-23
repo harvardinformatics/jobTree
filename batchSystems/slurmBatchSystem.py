@@ -98,7 +98,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
             },
             "--slurm-time" : {
                 "dest" : "slurm_time",
-                "default" : 100,
+                "default" : "100",
                 "help" : "Set the time limit of the Slurm job.  Corresponds to sbatch -t/--time.  Default is 100 (min)."
             },
             "--slurm-scriptpath" : {
