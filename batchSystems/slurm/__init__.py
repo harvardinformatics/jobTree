@@ -17,11 +17,19 @@ import re, os
 import tempfile
 import json
 import subprocess
+from time import sleep
 
 from sonLib.bioio import logger
 
+# sbatch options that don't actually involve submitting a job
 SBATCH_NOSUBMIT_OPTIONS =  ['usage','help']
 
+# Maximum number of SBATCH attempts before giving up
+# Interattempt sleeps increment with a fibonacci sequence starting with 5 seconds
+# At 15 attempts, the sleep time is about 1.5 hours
+SBATCH_MAX_ATTEMPTS = 15
+
+# Path for parameter definition files
 DEFAULT_PDEF_PATH=os.path.join(os.path.dirname(__file__),'slurm')
 
 def getClassFromName(classname):
@@ -857,11 +865,20 @@ class Slurm(object):
                 sbatch.setArgValue(arg,value)
         logger.info("sbatch command %s" % sbatch)
         
-        
         [returncode,stdout,stderr] = sbatch.run()
         
+        # If sbatch fails, keep trying with increasing sleep times between
+        # attempts.
+        attempts = 1
+        t1 = t2 = 5
+        while returncode != 0 and attempts < SBATCH_MAX_ATTEMPTS:
+            sleep(t2)
+            [returncode,stdout,stderr] = sbatch.run()
+            attempts += 1
+            t1, t2 = t2, t1 + t2
+            
         if returncode != 0:
-            raise Exception("sbatch command failed: %s" % stderr)
+            raise Exception("sbatch command failed after %d attempts: %s" % (SBATCH_MAX_ATTEMPTS,stderr))
         
         jobid = stdout.split()[-1]
         return jobid
