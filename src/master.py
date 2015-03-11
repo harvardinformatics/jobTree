@@ -226,7 +226,7 @@ def processAnyUpdatingFile(jobFile):
 def processAnyNewFile(jobFile):
     if os.path.isfile(jobFile + ".new"): #The job was not properly updated before crashing
         logger.critical("There was a .new file for the job and no .updating file %s" % jobFile)
-		os.remove(jobFile + ".new") #A new file should only exist if atomic update fails
+        os.remove(jobFile + ".new") #A new file should only exist if atomic update fails
         for f in listChildDirs(os.path.split(jobFile)[0]):
             logger.critical("Removing broken child %s\n" % f)
             system("rm -rf %s" % f)
