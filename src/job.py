@@ -6,6 +6,8 @@ import marshal as pickler
 import os
 import re
 from jobTree.src.bioio import system
+from sonLib.bioio import logger
+from time import sleep
 
 def getJobFileName(jobDir):
     return os.path.join(jobDir, "job")
@@ -86,9 +88,24 @@ class Job:
         os.rename(self.getJobFileName() + ".new", self.getJobFileName())
         
     def _write(self, suffix=""):
-        fileHandle = open(self.getJobFileName() + suffix, 'w')
-        pickler.dump(_convertJobToJson(self), fileHandle)
+        fname = self.getJobFileName() + suffix
+        fileHandle = open(fname, 'w')
+        notReallyJson = _convertJobToJson(self)
+        pickler.dump(notReallyJson, fileHandle)
         fileHandle.close()
+        fsize = os.path.getsize(fname)
+        attempts = 1
+        while attempts < 5 and fsize == 0:
+            msg = "Job data is %s and pickle file size is %d\n" % (notReallyJson,fsize)
+            print msg
+            logger.info(msg)
+            fileHandle = open(fname, 'w')
+            pickler.dump(notReallyJson, fileHandle)
+            fileHandle.close()
+            fsize = os.path.getsize(fname)
+            attempts += 1
+            sleep(5)
+            
 
 """Private functions
 """

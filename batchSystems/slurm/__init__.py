@@ -851,7 +851,7 @@ class Slurm(object):
         Any slurm parameters that are set as keyword args will override the 
         environment variables.
         """
-        sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"100"})
+        sbatch = Command.fetch("sbatch",jsonstr=Slurm.sbatchstr,defaults={"partition":"serial_requeue","time":"100","output":"/dev/null"})
         sbatch.command = command
         envs = {"JT_SLURM_PARTITION":"partition","JT_SLURM_TIME":"time"}
         for env,arg in envs.iteritems():
