@@ -750,16 +750,16 @@ class Slurm(object):
             sacct.format = "State"
             sacct.noheader = True
             [returncode,stdout,stderr] = sacct.run()
-            
+        
             # If sacct fails, keep trying with increasing sleep times between
-        	# attempts.
-        	attempts = 1
-        	t1 = t2 = 5
-        	while returncode != 0 and attempts < SBATCH_MAX_ATTEMPTS:
-        	    sleep(t2)
-        	    [returncode,stdout,stderr] = sacct.run()
-        	    attempts += 1
-        	    t1, t2 = t2, t1 + t2
+            # attempts.
+            attempts = 1
+            t1 = t2 = 5
+            while returncode != 0 and attempts < SBATCH_MAX_ATTEMPTS:
+                sleep(t2)
+                [returncode,stdout,stderr] = sacct.run()
+                attempts += 1
+                t1, t2 = t2, t1 + t2
 
             if returncode != 0:
                 raise Exception("sacct failed %s" % sacct.composeCmdString())
@@ -855,10 +855,10 @@ class Slurm(object):
         attempts = 1
         t1 = t2 = 5
         while returncode != 0 and attempts < SBATCH_MAX_ATTEMPTS:
-        	sleep(t2)
-        	[returncode,stdout,stderr] = scancel.run()
-        	attempts += 1
-        	t1, t2 = t2, t1 + t2
+            sleep(t2)
+            [returncode,stdout,stderr] = scancel.run()
+            attempts += 1
+            t1, t2 = t2, t1 + t2
         
         if returncode != 0:
             raise Exception("scancel command failed after %d attempts: %s" % (SBATCH_MAX_ATTEMPTS,stderr))
