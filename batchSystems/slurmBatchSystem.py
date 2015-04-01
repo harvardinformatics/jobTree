@@ -119,8 +119,13 @@ class SlurmBatchSystem(AbstractBatchSystem):
         """
         
         jobid,task = slurmJobTask
+        status = None
+        try:
+            status = Slurm.getJobStatus(jobid)
+        except Exception:
+            # Leave it as None
+            pass
         
-        status = Slurm.getJobStatus(jobid)
         if status is not None and status.strip() != "":
             if "COMPLETED" in status:
                 return 0
