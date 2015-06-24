@@ -127,9 +127,9 @@ class SlurmBatchSystem(AbstractBatchSystem):
             pass
         
         if status is not None and status.strip() != "":
-            if "COMPLETED" in status:
+            if "COMPLETED" in status or "COMPLETING" in status:
                 return 0
-            for code in ["PENDING","RUNNING","SUSPENDED","CONFIGURING","COMPLETING","RESIZING"]:
+            for code in ["PENDING","RUNNING","SUSPENDED","CONFIGURING","RESIZING"]:
                 if code in status:
                     return None
             for code in ["CANCELLED","FAILED","TIMEOUT","PREEMPTED","NODE_FAIL"]:
