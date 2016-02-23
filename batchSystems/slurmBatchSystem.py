@@ -105,7 +105,12 @@ class SlurmBatchSystem(AbstractBatchSystem):
                 "dest" : "scriptpath",
                 "default" : "./",
                 "help" : "Path where sbatch scripts will be stored."
-            }
+            },
+            "--slurm-jobname" : {
+                "dest" : "job_name",
+                "default" : "hpcactus_%j",
+                "help"  :  "Name pattern for jobs"
+            },
         }
         return opts
     
