@@ -567,7 +567,7 @@ class Slurm(object):
                 "name" : "job_name",
                 "description" : "Instruct SLURM to connect the batch script standard input directly to the file name specified",
                 "switches" : ["--job-name","-J"],
-                "pattern" : "--job-name='<VALUE>'",
+                "pattern" : "--job-name=<VALUE>",
                 "required" : "no"
             },
             {
