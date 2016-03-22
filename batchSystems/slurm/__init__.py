@@ -695,7 +695,7 @@ class Slurm(object):
 {
         "name" : "squeue",
         "version" : "14.03.8",
-        "bin" : "/usr/bin/squeue",
+        "bin" : "/usr/local/bin/squeue",
         "description" : "squeue is used to view job and job step information for jobs managed by SLURM..",
         "cmdclass" : "jobTree.batchSystems.slurm.Command",
         "parameterdefs" : [
