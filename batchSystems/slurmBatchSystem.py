@@ -111,6 +111,11 @@ class SlurmBatchSystem(AbstractBatchSystem):
                 "default" : "hpcactus_%j",
                 "help"  :  "Name pattern for jobs"
             },
+            "--slurm-constraint" : {
+                "dest" : "slurm_constraint",
+                "default" : "",
+                "help"  :  "A slurm node constraint specification"
+            },
         }
         return opts
     
