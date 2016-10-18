@@ -613,6 +613,13 @@ class Slurm(object):
                 "required" : "no"
             },
             {
+                "name" : "constraint",
+                "description" : "Limit nodes to those with matching constraint values.",
+                "switches" : ["--constraint","-C"],
+                "pattern" : "--constraint='<VALUE>'",
+                "required" : "no"
+            },
+            {
                 "name" : "time",
                 "description" : "Set a limit on the total run time of the job allocation.",
                 "switches" : ["--time","-t"],
