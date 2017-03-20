@@ -613,6 +613,13 @@ class Slurm(object):
                 "required" : "no"
             },
             {
+                "name" : "qos",
+                "description" : "Request a quality of service for the job. ",
+                "switches" : ["--qos"],
+                "pattern" : "--qos=<VALUE>",
+                "required" : "no"
+            },
+            {
                 "name" : "constraint",
                 "description" : "Limit nodes to those with matching constraint values.",
                 "switches" : ["--constraint","-C"],
