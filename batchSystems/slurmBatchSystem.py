@@ -116,6 +116,11 @@ class SlurmBatchSystem(AbstractBatchSystem):
                 "default" : "",
                 "help"  :  "A slurm node constraint specification"
             },
+            "--slurm-qos" : {
+                "dest" : "slurm_qos",
+                "default" : "",
+                "help"  :  "Request a quaity of service for  the job."
+            },
         }
         return opts
     
